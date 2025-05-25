@@ -1,6 +1,7 @@
+import openpyxl
 import sys
 import os
-import pandas as pd
+import re
 from PyQt5.QtCore import QTimer, Qt, QPoint
 from PyQt5.QtWidgets import (
     QApplication, QDialog, QFileDialog, QFrame, QLineEdit, QMessageBox, 
@@ -127,8 +128,7 @@ class CustomHeader(QFrame):
 
 
 class BaseWindow(QWidget):
-    shared_df = None 
-
+    shared_df = None
     def __init__(self):
         super().__init__()
         self.old_pos = None
@@ -136,15 +136,60 @@ class BaseWindow(QWidget):
 
         if BaseWindow.shared_df is None:
             try:
-                df_raw = pd.read_excel("data/mapping_table.xlsx", sheet_name= "Sample", engine="openpyxl")
-                df_raw.columns = df_raw.columns.str.strip()
-                df_raw = df_raw.ffill() 
-                BaseWindow.shared_df = df_raw
-                print(f"[DEBUG] Columns loaded: {df_raw.columns.tolist()}")
-                print("[INFO] Excel loaded (shared_df).")
-            except Exception as e:
-                print(f"[ERROR] Excel load failed: {e}")
+                base_dir = getattr(sys, '_MEIPASS', os.path.dirname(os.path.abspath(sys.argv[0])))
+                mapping_dir = os.path.join(base_dir, "data")
+                latest_version = -1
+                latest_file = None
 
+                for filename in os.listdir(mapping_dir):
+                    if filename.startswith("mapping_table") and filename.endswith(".xlsx"):
+                        match = re.search(r"mapping_table(\d+)\.xlsx", filename)
+                        if match:
+                            version = int(match.group(1))
+                            if version > latest_version:
+                                latest_version = version
+                                latest_file = filename
+
+                if latest_file:
+                    file_path = os.path.join(mapping_dir, latest_file)
+                    workbook = openpyxl.load_workbook(file_path)
+                    sheet = workbook["Sample"]
+
+                    # Получаем заголовки
+                    headers = [cell.value.strip() if isinstance(cell.value, str) else str(cell.value)
+                               for cell in next(sheet.iter_rows(min_row=1, max_row=1))]
+
+                    # Читаем строки с ffill логикой
+                    data = []
+                    previous_cause = None
+                    for row in sheet.iter_rows(min_row=2, values_only=True):
+                        row_dict = dict(zip(headers, row))
+                        
+                        # Приведение типов
+                        code = str(row_dict.get("Err Code")).strip() if row_dict.get("Err Code") is not None else ""
+                        cause = row_dict.get("Cause")
+                        action = str(row_dict.get("Action")).strip() if row_dict.get("Action") is not None else ""
+
+                        # FILL предыдущим Cause если пустой
+                        if cause is None:
+                            cause = previous_cause
+                        else:
+                            previous_cause = cause
+
+                        data.append({
+                            "Err Code": code,
+                            "Cause": cause,
+                            "Action": action
+                        })
+
+
+                    BaseWindow.shared_df = data
+                    print(f"[INFO] Loaded mapping table: {latest_file}")
+                else:
+                    raise FileNotFoundError("No valid mapping_tableXXXX.xlsx file found in /data.")
+
+            except Exception as e:
+                print(f"[ERROR] Failed to load mapping table: {e}")
 
         self.df = BaseWindow.shared_df
 
@@ -164,19 +209,29 @@ class BaseWindow(QWidget):
 
     # Header functions for buttons
     def open_search_window(self):
+        # Open file dialog to pick log files
         files, _ = QFileDialog.getOpenFileNames(
             self,
             "Select one or more log files",
             "",
             "Log Files (*.log);;All Files (*)"
         )
+
         if files:
-            self.selected_files = files
-            self.user_choice_window = UserChoiceWindow(files)
+            # Keep only .log files (case-insensitive)
+            valid_files = [f for f in files if f.lower().endswith(".log")]
+
+            if not valid_files:
+                QMessageBox.warning(self, "Invalid File(s)", "Please select only .log files.")
+                return
+
+            self.selected_files = valid_files
+            self.user_choice_window = UserChoiceWindow(valid_files)
             self.user_choice_window.show()
             self.close()
         else:
             self.selected_files = []
+
 
     def open_help_window(self):
         self.help_window = HelpWindow()
@@ -226,7 +281,7 @@ class MainWindow(BaseWindow):
 
         panel = QFrame()
         panel.setStyleSheet("background-color: #f0f0f0; border: 1px solid #999999; border-radius: 8px;")
-        panel.setFixedSize(620, 200)
+        panel.setFixedSize(620, 260)
 
         panel_layout = QVBoxLayout(panel)
         panel_layout.setContentsMargins(25, 20, 25, 20)
@@ -247,6 +302,7 @@ class MainWindow(BaseWindow):
 
         for text in instructions:
             label = QLabel(text)
+            label.setWordWrap(True)
             label.setAlignment(Qt.AlignLeft)
             label.setStyleSheet("font-size: 14px; color: #222222;")
             panel_layout.addWidget(label)
@@ -371,29 +427,32 @@ class HelpWindow(BaseWindow):
             QMessageBox.warning(self, "Input Error", "Please enter an error code.")
             return
 
-        if self.df is None:
+        if not self.df:
             QMessageBox.critical(self, "Data Error", "Mapping table not loaded.")
             return
 
-        # Find first row by Err Code
-        target_row = self.df[self.df["Err Code"].astype(str) == code]
-        if target_row.empty:
+        # Найти первую строку по коду
+        target_row = next((row for row in self.df if row["Err Code"] == code), None)
+
+        if not target_row:
             self.cause_result.setText("No matching error code found.")
             self.action_result.setText("No corrective action available.")
             return
 
-        # Take the cause
-        cause_value = str(target_row.iloc[0]["Cause"])
+        cause_value = target_row["Cause"] or "None"
 
-        # Find all rows with the same cause (structure of the logs so...)
-        all_matches = self.df[self.df["Cause"] == cause_value]
+        # Найти все строки с тем же cause
+        matched_actions = set()
+        for row in self.df:
+            if row["Cause"] == cause_value and row["Action"]:
+                matched_actions.add(row["Action"])
 
-        # Collect all actions 
-        actions = all_matches["Action"].dropna().map(str).unique()
-        action_text = "\n".join(actions)
+        actions_text = "\n".join(sorted(matched_actions))
 
         self.cause_result.setText(cause_value)
-        self.action_result.setText(action_text)
+        self.action_result.setText(actions_text if actions_text else "No corrective action available.")
+
+
 
 class AboutWindow(BaseWindow):
     def __init__(self):
@@ -405,17 +464,66 @@ class AboutWindow(BaseWindow):
         layout = QVBoxLayout()
         layout.setContentsMargins(0, 0, 0, 0)
 
+        # Custom header with highlight
         self.header = CustomHeader(self, active="About")
         layout.addWidget(self.header)
 
-        # Centered text's block
-        content_label = QLabel("About content will be added here soon.")
-        content_label.setAlignment(Qt.AlignCenter)
-        content_label.setStyleSheet("font-size: 18px; padding: 40px;")
+        # Central container
+        center_container = QWidget()
+        center_layout = QVBoxLayout(center_container)
+        center_layout.setAlignment(Qt.AlignCenter)
 
-        layout.addWidget(content_label)
+        panel = QFrame()
+        panel.setStyleSheet("""
+            background-color: #f0f0f0;
+            border: 1px solid #999999;
+            border-radius: 10px;
+        """)
+        panel.setFixedSize(600, 360)
+
+        panel_layout = QVBoxLayout(panel)
+        panel_layout.setContentsMargins(30, 25, 30, 25)
+        panel_layout.setSpacing(15)
+
+        # Title
+        title = QLabel("About the Application")
+        title.setAlignment(Qt.AlignCenter)
+        title.setStyleSheet("font-size: 20px; font-weight: bold; color: #333333;")
+        panel_layout.addWidget(title)
+
+        # App Description
+        description = QLabel(
+            "This system provides intelligent log file analysis and error mapping support.\n"
+            "It helps users identify issues by searching error codes and reviewing log contexts."
+        )
+        description.setAlignment(Qt.AlignCenter)
+        description.setWordWrap(True)
+        description.setStyleSheet("font-size: 14px; color: #222222;")
+        panel_layout.addWidget(description)
+
+        # Team Section
+        team_title = QLabel("Development Team")
+        team_title.setAlignment(Qt.AlignCenter)
+        team_title.setStyleSheet("font-size: 16px; font-weight: bold; margin-top: 10px;")
+        panel_layout.addWidget(team_title)
+
+        # Team Members
+        team_members = [
+            "Rachel – Project Leader, Tester",
+            "Aleksandr – Graphical Interface Designer, Tester",
+            "Mubashir – Low Level Designer, Support",
+            "Aleks – Team Leader, Developer"
+        ]
+
+        for member in team_members:
+            member_label = QLabel(member)
+            member_label.setAlignment(Qt.AlignLeft)
+            member_label.setStyleSheet("font-size: 13px; color: #111111; padding-left: 10px;")
+            panel_layout.addWidget(member_label)
+
+        center_layout.addWidget(panel)
+        layout.addWidget(center_container, alignment=Qt.AlignCenter)
         self.setLayout(layout)
-
 
 class UserChoiceWindow(BaseWindow):
     def __init__(self, selected_files):
@@ -471,7 +579,7 @@ class UserChoiceWindow(BaseWindow):
         self.close()
 
     def open_auto(self):
-        self.analysis_window = AnalyzingWindow(self.selected_files)
+        self.analysis_window = AnalyzingWindow(self.selected_files, "ALARM")
         self.analysis_window.show()
         self.close()
 
@@ -481,7 +589,6 @@ class UserChoiceWindow(BaseWindow):
         self.close()
         self.main_window = MainWindow()
         self.main_window.show()
-
 
 class ManualModeWindow(BaseWindow):
     def __init__(self, selected_files):
@@ -516,6 +623,7 @@ class ManualModeWindow(BaseWindow):
         self.input_field.setStyleSheet("font-size: 16px; padding: 5px;")
         panel_layout.addWidget(self.input_field)
 
+
         # Buttons
         button_row = QHBoxLayout()
         button_names = [("Start Search", self.start_search),
@@ -537,6 +645,11 @@ class ManualModeWindow(BaseWindow):
 
     def start_search(self):
         search_text = self.input_field.text().strip()
+
+        if not search_text:
+            QMessageBox.warning(self, "Input Error", "Please enter an error code.")
+            return
+
         self.analysis_window = AnalyzingWindow(self.selected_files, search_text)
         self.analysis_window.show()
         self.close()
@@ -603,8 +716,13 @@ class AnalyzingWindow(BaseWindow):
         self.timer.timeout.connect(self.step_analysis)
         self.timer.start(1)
 
+
+
     def step_analysis(self):
+        """Step-by-step log file analysis with case-insensitive search based on user input."""
+
         try:
+            # If no file is currently loaded, load the next one
             if self.current_file is None:
                 file = next(self.file_iter)
                 self.current_file = file
@@ -613,29 +731,31 @@ class AnalyzingWindow(BaseWindow):
                 self.lines_iter = iter(self.lines)
                 self.line_num = 0
 
+            # Read the next line from the current file
             line = next(self.lines_iter)
             self.line_num += 1
             self.current_line += 1
 
-            if self.search_text in line:
+            # Normalize case for search
+            line_lower = line.lower()
+            search_input = self.search_text.strip().lower()
+
+            # Split into terms if separated by comma or semicolon
+            if ',' in search_input or ';' in search_input:
+                search_terms = [term.strip() for term in re.split(r'[;,]', search_input)]
+                matched = any(term in line_lower for term in search_terms)
+            else:
+                matched = search_input in line_lower
+
+            if matched:
                 self.result_data.append({
                     "file": os.path.basename(self.current_file),
-                    "path": self.current_file,
                     "line": self.line_num,
-                    "text": line.strip()
+                    "text": line.strip(),
+                    "path": self.current_file
                 })
-                self.skip_ahead = 20
 
-            elif self.skip_ahead > 0:
-                if '"ALID"' in line or '"ALTX"' in line:
-                    self.result_data.append({
-                    "file": os.path.basename(self.current_file),
-                    "path": self.current_file,
-                    "line": self.line_num,
-                    "text": line.strip()
-                })
-                self.skip_ahead -= 1
-
+            # Update progress bar
             progress = int((self.current_line / self.total_lines) * 100)
             self.progress.setValue(progress)
 
@@ -653,10 +773,18 @@ class AnalyzingWindow(BaseWindow):
                 self.timer.stop()
                 self.open_result()
 
+
     def open_result(self):
-        self.result_window = FoundResultWindow(self.result_data)
-        self.result_window.show()
+        if not self.result_data:
+            # No results found — open the "Nothing Found" window
+            self.nothing_window = NothingFoundWindow(self.selected_files)
+            self.nothing_window.show()
+        else:
+            # Results found — open the results window
+            self.result_window = FoundResultWindow(self.result_data, self.selected_files)
+            self.result_window.show()
         self.close()
+
 
     def cancel_analysis(self):
         self.timer.stop()
@@ -666,20 +794,75 @@ class AnalyzingWindow(BaseWindow):
 
 
 class NothingFoundWindow(BaseWindow):
-    def __init__(self):
+    def __init__(self, selected_files):
         super().__init__()
-        self.setWindowTitle("Nothing Found")
-        self.resize(800, 600)
+        self.selected_files = selected_files
+        self.setWindowFlags(Qt.FramelessWindowHint)
+        self.setFixedSize(800, 600)
+        self.setStyleSheet("background-color: #dcdcdc;")
+
+        # Main layout for the whole window
         layout = QVBoxLayout()
+        layout.setContentsMargins(0, 0, 0, 0)
+
+        # Custom header at the top
         self.header = CustomHeader(self, active="Search")
-        layout.addWidget(QLabel("No results found."))
+        layout.addWidget(self.header)
+
+        # Center container with fixed size
+        center_widget = QWidget()
+        center_layout = QVBoxLayout(center_widget)
+        center_layout.setAlignment(Qt.AlignCenter)
+
+        panel = QFrame()
+        panel.setFixedSize(300, 180)
+        panel.setStyleSheet("background-color: #bbbbbb; border: 2px solid gray;")
+        panel_layout = QVBoxLayout(panel)
+        panel_layout.setContentsMargins(20, 20, 20, 20)
+        panel_layout.setSpacing(20)
+
+        # Label
+        label = QLabel("Nothing Found")
+        label.setAlignment(Qt.AlignCenter)
+        label.setStyleSheet("font-size: 16px; font-weight: bold;")
+        panel_layout.addWidget(label)
+
+        # Buttons row
+        btn_layout = QHBoxLayout()
+        self.back_btn = QPushButton("Back")
+        self.home_btn = QPushButton("Home")
+
+        for btn in (self.back_btn, self.home_btn):
+            btn.setFixedHeight(35)
+            btn.setStyleSheet(self.button_style(font_size="14px", bold=True))
+            btn_layout.addWidget(btn)
+
+        panel_layout.addLayout(btn_layout)
+        center_layout.addWidget(panel)
+
+        layout.addWidget(center_widget, alignment=Qt.AlignCenter)
         self.setLayout(layout)
 
+        # Button logic
+        self.back_btn.clicked.connect(self.back_to_selection)
+        self.home_btn.clicked.connect(self.back_to_home)
+
+    def back_to_selection(self):
+        self.user_choice_window = UserChoiceWindow(self.selected_files)
+        self.user_choice_window.show()
+        self.close()
+
+    def back_to_home(self):
+        self.main_window = MainWindow()
+        self.main_window.show()
+        self.close()
+
+
 class FoundResultWindow(BaseWindow):
-    def __init__(self, results):
+    def __init__(self, results, selected_files):
         super().__init__()
         self.results = results
-        self.selected_files = BaseWindow().selected_files
+        self.selected_files = selected_files
 
         self.setWindowFlags(Qt.FramelessWindowHint)
         self.resize(800, 600)
@@ -742,8 +925,7 @@ class FoundResultWindow(BaseWindow):
         layout.addLayout(btn_row)
         self.setLayout(layout)
 
-    def show_log_context(self, row, column):
-        file_name = self.result_area.item(row, 0).text()
+    def show_log_context(self, row):
         line_str = self.result_area.item(row, 1).text()
         try:
             line_num = int(line_str.replace("Line", "").strip())
@@ -777,7 +959,7 @@ class FoundResultWindow(BaseWindow):
             self.log_output.setText(f"Error reading file: {e}")
 
     def back(self):
-        self.user_choice_window = UserChoiceWindow([])
+        self.user_choice_window = UserChoiceWindow(self.selected_files)
         self.user_choice_window.show()
         self.close()
 
