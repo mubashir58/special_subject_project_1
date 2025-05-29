@@ -50,25 +50,31 @@ A desktop application for scanning and analyzing log files to detect errors and 
 
 
 ## Example UI Screens
-### Mode	Description
- Search File	  | Choose and scan one or more .log files
- Manual Search	|Input custom keywords
- Auto Search	  |Use default Word (e.g., EALM)
- Help	Input     |error code and retrieve cause/solution
+
+ | Mode	          |               Description              |
+ |----------------|----------------------------------------|
+ |Search File	    | Choose and scan one or more .log files |
+ |Manual Search  	| Input custom keywords                  | 
+ |Auto Search	    | Use default Word (e.g., EALM)          |
+ |Help	Input     | error code and retrieve cause/solution |
 
 ## Development Timeline
-### Month	Milestone
-March	| Planning & Requirements Gathering
-April	| High-Level and Low-Level Design
-May	  | Development & Testing
-June	| Final Integration, Documentation, Demo
+
+| Month	|              Milestone                 |
+|-------|----------------------------------------|
+|March	| Planning & Requirements Gathering      |
+|April	| High-Level and Low-Level Design        |
+|May	  | Development & Testing                  |
+|June	  | Final Integration, Documentation, Demo |
 
 ## Team
-Name	                 | Student ID
-Aleksandr Atakov		   | 202412042
-Aleksandr Avdeev		   | 202412027
-Muhammad Mubashir		   | 202412120
-Rachel Grajeda Angulo	 | 202412182
+
+|Name	                   |  Student ID |
+|------------------------|-------------|
+|Aleksandr Atakov		     | 202412042   |
+|Aleksandr Avdeev		     | 202412027   |
+|Muhammad Mubashir		   | 202412120   |
+|Rachel Grajeda Angulo	 | 202412182   |
 
 ## Testing
  Manual log testing with APRO’s sample logs
