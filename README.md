@@ -128,12 +128,12 @@ File not found errors? Check that mapping_table.csv and log files are in the cor
 
 ## Team
 
-|Name	                   |  Student ID |
-|------------------------|-------------|
-|Aleksandr Atakov		     | 202412042   |
-|Aleksandr Avdeev		     | 202412027   |
-|Muhammad Mubashir		   | 202412120   |
-|Rachel Grajeda Angulo	 | 202412182   |
+|Name	                   |                  Role               |  Student ID |
+|------------------------|-------------------------------------|-------------|
+|Aleksandr Atakov		     |Team Leader, Developer               | 202412042   |
+|Aleksandr Avdeev		     |Graphhical Interface Designer, Tester| 202412027   |
+|Muhammad Mubashir		   |Low Level Designer, Support          | 202412120   |
+|Rachel Grajeda Angulo	 |Team Leader, Tester                  | 202412182   |
 
 ## Testing
  Manual log testing with APRO’s sample logs
