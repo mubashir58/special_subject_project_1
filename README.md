@@ -1,6 +1,6 @@
 # Automated Log Analysis System
 
-A desktop application for scanning and analyzing log files to detect errors and provide solutions using a mapping table. Built for use in industrial and IT environments.
+A desktop application for scanning and analyzing log files to detect errors and provide solutions using a mapping table. Built for academic and non-commercial use. Built with the help of APRO company's provided data.
 
 ---
 
