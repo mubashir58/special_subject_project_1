@@ -58,6 +58,65 @@ A desktop application for scanning and analyzing log files to detect errors and 
  |Auto Search	    | Use default Word (e.g., EALM)          |
  |Help	Input     | error code and retrieve cause/solution |
 
+ ## Requirements
+
+- Python 3.10 or higher
+- PyQt5
+- pandas
+
+ ## Installation Guide
+
+Follow these steps to install and run the Automated Log Analysis System on your machine.
+
+###  Prerequisites
+
+Make sure you have the following installed:
+
+- [Python 3.10+](https://www.python.org/downloads/)
+- `pip` package installer (comes with Python)
+
+---
+
+###  Step 1: Clone the Repository
+
+If you haven’t already, clone this project from GitHub:
+
+git clone https://github.com/Alexus-27/automated-log-analysis.git
+cd automated-log-analysis
+
+### Step 2: Create a virtual environment (Recommended)
+python -m venv venv
+# Activate the virtual environment:
+# On Windows:
+venv\Scripts\activate
+# On macOS/Linux:
+source venv/bin/activate
+
+### Step 3: Install required libraries
+pip install pyqt5 pandas
+
+
+### Step 4: Prepare Project Files
+Ensure the following files/folders are correctly placed:
+
+main.py — in the root directory
+
+mapping_table.csv — in the root directory
+
+logs/ folder — contains your .json log files in the root directory
+
+### Step 5: Run the application
+Once ecerything is setup, run the application with 
+python main.py
+This will launch the PyQt5 GUI for log analysis.
+
+### Troubleshooting
+No GUI appears? Make sure your Python environment is activated and PyQt5 is installed correctly.
+
+File not found errors? Check that mapping_table.csv and log files are in the correct paths.
+
+
+
 ## Development Timeline
 
 | Month	|              Milestone                 |
